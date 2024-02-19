@@ -71,8 +71,7 @@ public class RegionWhatIfCommand : AsyncCommand<WhatIfSettings>
                     settings.GetScope,
                     "",
                     settings.From,
-                    settings.To,
-                    new SecurityCredentials(settings.TenantId, settings.ServicePrincipalId, settings.ServicePrincipalSecret));
+                    settings.To);
 
                 // We need to group the resources by resource id AND product as we get for the same resource multiple items for each day
                 // However, we do need to make sure we sum the quantity and cost

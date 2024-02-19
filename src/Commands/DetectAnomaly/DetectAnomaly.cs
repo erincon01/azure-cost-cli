@@ -97,8 +97,7 @@ public class DetectAnomalyCommand : AsyncCommand<DetectAnomalySettings>
             settings.Dimension,
             settings.Timeframe,
             settings.From, settings.To,
-            false,
-            new SecurityCredentials(settings.TenantId, settings.ServicePrincipalId, settings.ServicePrincipalSecret));
+            false);
 
         var costAnalyzer = new CostAnalyzer(settings);
 

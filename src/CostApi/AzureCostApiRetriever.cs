@@ -6,7 +6,6 @@ using System.Text.Json.Serialization;
 using Azure.Core;
 using Azure.Identity;
 using AzureCostCli.Commands;
-using Microsoft.Identity.Client;
 using Spectre.Console;
 using Spectre.Console.Json;
 
@@ -44,69 +43,29 @@ public class AzureCostApiRetriever : ICostRetriever
 
 
 
-    private async Task RetrieveToken(bool includeDebugOutput, SecurityCredentials sc)
+    private async Task RetrieveToken(bool includeDebugOutput)
     {
         if (_tokenRetrieved)
             return;
 
-        if (sc.tenantId!="" && sc.ServicePrincipalId!="" && sc.ServicePrincipalSecret!="")
-        {
-            // Create a ClientSecretCredential with the Service Principal details
-            var tokenCredential = new ClientSecretCredential(
-                sc.tenantId,
-                sc.ServicePrincipalId,
-                sc.ServicePrincipalSecret);
+        // Get the token by using the DefaultAzureCredential, but try the AzureCliCredential first
+        var tokenCredential = new ChainedTokenCredential(
+            new AzureCliCredential(),
+            new DefaultAzureCredential());
 
-            if (includeDebugOutput)
-                AnsiConsole.WriteLine($"Using ServicePrincipalSecretCredential with tenantId: {sc.tenantId}, ServicePrincipalId: {sc.ServicePrincipalId}");
+        if (includeDebugOutput)
+            AnsiConsole.WriteLine($"Using token credential: {tokenCredential.GetType().Name} to fetch a token.");
 
-            // Set up the token request context
-            TokenRequestContext tokenRequestContext = new TokenRequestContext(
-                scopes: new[] { $"https://management.azure.com/.default" },
-                tenantId: sc.tenantId); // TenantId needs to be explicitly specified here
+        var token = await tokenCredential.GetTokenAsync(new TokenRequestContext(new[]
+            { $"https://management.azure.com/.default" }));
 
-            // Request the token
-            var token = await tokenCredential.GetTokenAsync(tokenRequestContext);
+        if (includeDebugOutput)
+            AnsiConsole.WriteLine($"Token retrieved and expires at: {token.ExpiresOn}");
 
-            if (includeDebugOutput)
-                AnsiConsole.WriteLine($"Token acquired and expires on: {token.ExpiresOn}");
+        // Set as the bearer token for the HTTP client
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
-            // Set the token as the authorization token for the HTTP client
-            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
-
-        }
-
-        else
-        { 
-
-            // Get the token by using the DefaultAzureCredential, but try the AzureCliCredential first
-            var tokenCredential = new ChainedTokenCredential(
-                new AzureCliCredential(),
-                new DefaultAzureCredential());
-
-            if (includeDebugOutput)
-                AnsiConsole.WriteLine($"Using token credential: {tokenCredential.GetType().Name} to fetch a token.");
-
-            // Request the token for the specified scope and tenantId
-            TokenRequestContext tokenRequestContext;
-            if (sc.tenantId == null)
-                tokenRequestContext = new TokenRequestContext(
-                                    scopes: new[] { $"https://management.azure.com/.default" });
-            else
-                tokenRequestContext = new TokenRequestContext(
-                                    scopes: new[] { $"https://management.azure.com/.default" },
-                                                    tenantId: sc.tenantId); // Explicitly specify the tenantId here for token retrieval
-
-            var token = await tokenCredential.GetTokenAsync(tokenRequestContext);
-
-            if (includeDebugOutput)
-                AnsiConsole.WriteLine($"Token retrieved and expires at: {token.ExpiresOn}");
-
-            // Set as the bearer token for the HTTP client
-            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
-
-            _tokenRetrieved = true;
-        }
+        _tokenRetrieved = true;
     }
 
 
@@ -157,9 +116,9 @@ public class AzureCostApiRetriever : ICostRetriever
         
     }
 
-    private async Task<HttpResponseMessage> ExecuteCallToCostApi(bool includeDebugOutput, object? payload, Uri uri, SecurityCredentials sc)
+    private async Task<HttpResponseMessage> ExecuteCallToCostApi(bool includeDebugOutput, object? payload, Uri uri)
     {
-        await RetrieveToken(includeDebugOutput, sc);
+        await RetrieveToken(includeDebugOutput);
 
         if (includeDebugOutput)
         {
@@ -194,7 +153,7 @@ public class AzureCostApiRetriever : ICostRetriever
 
     public async Task<IEnumerable<CostItem>> RetrieveCosts(bool includeDebugOutput, Scope scope,
         string[] filter, MetricType metric,
-        TimeframeType timeFrame, DateOnly from, DateOnly to, SecurityCredentials sc)
+        TimeframeType timeFrame, DateOnly from, DateOnly to)
     {
         var filters = GenerateFilters(filter);
         var uri = DeterminePath(scope, "/providers/Microsoft.CostManagement/query?api-version=2023-03-01&$top=5000");
@@ -238,7 +197,7 @@ public class AzureCostApiRetriever : ICostRetriever
             }
         };
 
-        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri, sc);
+        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri);
 
         CostQueryResponse? content = await response.Content.ReadFromJsonAsync<CostQueryResponse>();
 
@@ -261,7 +220,7 @@ public class AzureCostApiRetriever : ICostRetriever
    
 
     public async Task<IEnumerable<CostNamedItem>> RetrieveCostByServiceName(bool includeDebugOutput,
-        Scope scope, string[] filter, MetricType metric, TimeframeType timeFrame, DateOnly from, DateOnly to, SecurityCredentials sc)
+        Scope scope, string[] filter, MetricType metric, TimeframeType timeFrame, DateOnly from, DateOnly to)
     {        
         var uri = DeterminePath(scope, "/providers/Microsoft.CostManagement/query?api-version=2023-03-01&$top=5000");
         
@@ -311,7 +270,7 @@ public class AzureCostApiRetriever : ICostRetriever
                 filter = GenerateFilters(filter)
             }
         };
-        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri, sc);
+        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri);
 
         CostQueryResponse? content = await response.Content.ReadFromJsonAsync<CostQueryResponse>();
 
@@ -333,7 +292,7 @@ public class AzureCostApiRetriever : ICostRetriever
 
     public async Task<IEnumerable<CostNamedItem>> RetrieveCostByLocation(bool includeDebugOutput, Scope scope,
         string[] filter,MetricType metric,
-        TimeframeType timeFrame, DateOnly from, DateOnly to, SecurityCredentials sc)
+        TimeframeType timeFrame, DateOnly from, DateOnly to)
     {
         var uri = DeterminePath(scope, "/providers/Microsoft.CostManagement/query?api-version=2023-03-01&$top=5000");
 
@@ -383,7 +342,7 @@ public class AzureCostApiRetriever : ICostRetriever
                 filter = GenerateFilters(filter)
             }
         };
-        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri, sc);
+        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri);
 
         CostQueryResponse? content = await response.Content.ReadFromJsonAsync<CostQueryResponse>();
 
@@ -405,7 +364,7 @@ public class AzureCostApiRetriever : ICostRetriever
 
     public async Task<IEnumerable<CostNamedItem>> RetrieveCostByResourceGroup(bool includeDebugOutput,
         Scope scope, string[] filter,MetricType metric,
-        TimeframeType timeFrame, DateOnly from, DateOnly to, SecurityCredentials sc)
+        TimeframeType timeFrame, DateOnly from, DateOnly to)
     {
         var uri = DeterminePath(scope, "/providers/Microsoft.CostManagement/query?api-version=2023-03-01&$top=5000");
 
@@ -460,7 +419,7 @@ public class AzureCostApiRetriever : ICostRetriever
                 filter = GenerateFilters(filter)
             }
         };
-        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri, sc);
+        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri);
 
         CostQueryResponse? content = await response.Content.ReadFromJsonAsync<CostQueryResponse>();
 
@@ -482,7 +441,7 @@ public class AzureCostApiRetriever : ICostRetriever
 
     public async Task<IEnumerable<CostNamedItem>> RetrieveCostBySubscription(bool includeDebugOutput,
        Scope scope, string[] filter, MetricType metric,
-        TimeframeType timeFrame, DateOnly from, DateOnly to, SecurityCredentials sc)
+        TimeframeType timeFrame, DateOnly from, DateOnly to)
     {
         var uri = DeterminePath(scope, "/providers/Microsoft.CostManagement/query?api-version=2023-03-01&$top=5000");
         
@@ -537,7 +496,7 @@ public class AzureCostApiRetriever : ICostRetriever
                 filter = GenerateFilters(filter)
             }
         };
-        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri, sc);
+        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri);
 
         CostQueryResponse? content = await response.Content.ReadFromJsonAsync<CostQueryResponse>();
 
@@ -559,7 +518,7 @@ public class AzureCostApiRetriever : ICostRetriever
 
     public async Task<IEnumerable<CostDailyItem>> RetrieveDailyCost(bool includeDebugOutput,
         Scope scope, string[] filter, MetricType metric, string dimension,
-        TimeframeType timeFrame, DateOnly from, DateOnly to, bool includeTags, SecurityCredentials sc)
+        TimeframeType timeFrame, DateOnly from, DateOnly to, bool includeTags)
     {
         var uri = DeterminePath(scope, "/providers/Microsoft.CostManagement/query?api-version=2023-03-01&$top=5000");
 
@@ -615,7 +574,7 @@ public class AzureCostApiRetriever : ICostRetriever
                 filter = GenerateFilters(filter)
             }
         };
-        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri, sc);
+        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri);
 
         CostQueryResponse? content = await response.Content.ReadFromJsonAsync<CostQueryResponse>();
 
@@ -660,13 +619,13 @@ public class AzureCostApiRetriever : ICostRetriever
         return items;
     }
 
-    public async Task<Subscription> RetrieveSubscription(bool includeDebugOutput, Guid subscriptionId, SecurityCredentials sc)
+    public async Task<Subscription> RetrieveSubscription(bool includeDebugOutput, Guid subscriptionId)
     {
         var uri = new Uri(
             $"/subscriptions/{subscriptionId}/?api-version=2019-11-01",
             UriKind.Relative);
 
-        var response = await ExecuteCallToCostApi(includeDebugOutput, null, uri, sc);
+        var response = await ExecuteCallToCostApi(includeDebugOutput, null, uri);
 
         var content = await response.Content.ReadFromJsonAsync<Subscription>();
 
@@ -683,7 +642,7 @@ public class AzureCostApiRetriever : ICostRetriever
 
     public async Task<IEnumerable<CostItem>> RetrieveForecastedCosts(bool includeDebugOutput, Scope scope,
         string[] filter, MetricType metric,
-        TimeframeType timeFrame, DateOnly from, DateOnly to, SecurityCredentials sc)
+        TimeframeType timeFrame, DateOnly from, DateOnly to)
     {      
         var uri = DeterminePath(scope, "/providers/Microsoft.CostManagement/forecast?api-version=2021-10-01&$top=5000");
 
@@ -726,7 +685,7 @@ public class AzureCostApiRetriever : ICostRetriever
         try
         {
             // Allow this one to fail, as it is not supported for all subscriptions
-            var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri, sc);
+            var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri);
 
             CostQueryResponse? content = await response.Content.ReadFromJsonAsync<CostQueryResponse>();
 
@@ -758,7 +717,7 @@ public class AzureCostApiRetriever : ICostRetriever
     public async Task<IEnumerable<CostResourceItem>> RetrieveCostForResources(bool includeDebugOutput,
         Scope scope, string[] filter, MetricType metric, bool excludeMeterDetails, TimeframeType timeFrame,
         DateOnly from,
-        DateOnly to, SecurityCredentials sc)
+        DateOnly to)
     {
         var uri = DeterminePath(scope, "/providers/Microsoft.CostManagement/query?api-version=2023-03-01&$top=5000");
 
@@ -881,7 +840,7 @@ public class AzureCostApiRetriever : ICostRetriever
                 grouping = grouping,
             }
         };
-        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri, sc);
+        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri);
 
         CostQueryResponse? content = await response.Content.ReadFromJsonAsync<CostQueryResponse>();
 
@@ -951,7 +910,7 @@ public class AzureCostApiRetriever : ICostRetriever
     }
 
     public async Task<IEnumerable<UsageDetails>> RetrieveUsageDetails(bool includeDebugOutput,
-        Scope scope, string filter,  DateOnly from, DateOnly to, SecurityCredentials sc)
+        Scope scope, string filter,  DateOnly from, DateOnly to)
     {
         var uri = DeterminePath(scope, "/providers/Microsoft.Consumption/usageDetails?api-version=2023-05-01&$expand=meterDetails&metric=usage&$top=5000");
 
@@ -967,7 +926,7 @@ public class AzureCostApiRetriever : ICostRetriever
 
         while (uri != null)
         {
-            var response = await ExecuteCallToCostApi(includeDebugOutput, null, uri, sc);
+            var response = await ExecuteCallToCostApi(includeDebugOutput, null, uri);
 
             UsageDetailsResponse payload = await response.Content.ReadFromJsonAsync<UsageDetailsResponse>() ??
                                            new UsageDetailsResponse();
@@ -979,12 +938,12 @@ public class AzureCostApiRetriever : ICostRetriever
         return items;
     }
 
-    public async Task<IEnumerable<BudgetItem>> RetrieveBudgets(bool includeDebugOutput, Scope scope, SecurityCredentials sc)
+    public async Task<IEnumerable<BudgetItem>> RetrieveBudgets(bool includeDebugOutput, Scope scope)
     {
         var uri = DeterminePath(scope, "/providers/Microsoft.Consumption/budgets/?api-version=2021-10-01");
 
-        var response = await ExecuteCallToCostApi(includeDebugOutput, null, uri, sc);
-        
+        var response = await ExecuteCallToCostApi(includeDebugOutput, null, uri);
+
         var json = await response.Content.ReadAsStringAsync();
         var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;

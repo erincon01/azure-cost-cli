@@ -97,8 +97,7 @@ public class CostByTagCommand : AsyncCommand<CostByTagSettings>
                     true,
                     settings.Timeframe,
                     settings.From,
-                    settings.To,
-                    new SecurityCredentials(settings.TenantId, settings.ServicePrincipalId, settings.ServicePrincipalSecret));
+                    settings.To);
             });
 
         var byTags = GetResourcesByTag(resources, settings.Tags.ToArray());

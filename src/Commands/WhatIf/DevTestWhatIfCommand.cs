@@ -77,8 +77,7 @@ public class DevTestWhatIfCommand : AsyncCommand<WhatIfSettings>
                     false,
                     settings.Timeframe,
                     settings.From,
-                    settings.To,
-                    new SecurityCredentials(settings.TenantId, settings.ServicePrincipalId, settings.ServicePrincipalSecret));
+                    settings.To);
 
                 ctx.Status = "Running What-If analysis...";
 
