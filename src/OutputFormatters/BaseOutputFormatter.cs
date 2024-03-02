@@ -19,6 +19,8 @@ public abstract class BaseOutputFormatter
     public abstract Task WriteBudgets(BudgetsSettings settings, IEnumerable<BudgetItem> budgets);
 
     public abstract Task WriteDailyCost(DailyCostSettings settings, IEnumerable<CostDailyItem> dailyCosts);
+    public abstract Task WriteDailyCostExpanded(DailyCostSettings settings, IEnumerable<CostDailyItemExpanded> dailyCostsExpanded);
+
     public abstract Task WriteAnomalyDetectionResults(DetectAnomalySettings settings, List<AnomalyDetectionResult> anomalies);
     public abstract Task WriteRegions(RegionsSettings settings, IReadOnlyCollection<AzureRegion> regions);
     public abstract Task WriteCostByTag(CostByTagSettings settings, Dictionary<string, Dictionary<string, List<CostResourceItem>>> byTags);

@@ -482,6 +482,157 @@ public class ConsoleOutputFormatter : BaseOutputFormatter
         return Task.CompletedTask;
     }
 
+    public override Task WriteDailyCostExpanded(DailyCostSettings settings, IEnumerable<CostDailyItemExpanded> dailyCosts)
+    {
+
+        if (dailyCosts.Any() == false)
+        {
+            AnsiConsole.MarkupLine("[red]No data found[/]");
+            return Task.CompletedTask;
+        }
+
+        const string othersLabel = "(others)";
+
+        var t = new Table();
+        t.Border(TableBorder.None);
+        t.Title($"Daily costs grouped by {settings.Dimension}");
+        t.Collapse();
+        t.AddColumn("").Collapse();
+        t.AddColumn("").RightAligned().Collapse();
+        t.AddColumn("").Expand();
+
+        t.Columns[1].Width = 15;
+        t.Columns[1].Alignment = Justify.Right;
+
+        // Keep track of the unique items and their assigned colors
+        var colorMap = new Dictionary<string, Color>();
+        var colorCounter = 0;
+
+        // List for storing unique items for the legend
+        var legendData = new List<IBreakdownChartItem>();
+
+        // Get the top items across all days, according to the OthersCutoff setting
+        var topItems = dailyCosts
+            .GroupBy(a => a.Name)
+            .Select(g => new { Name = g.Key, TotalCost = g.Sum(item => settings.UseUSD ? item.CostUsd : item.Cost) })
+            .OrderByDescending(g => g.TotalCost)
+            .Take(settings.OthersCutoff)
+            .Select(g => g.Name)
+            .ToList();
+
+        // Calculate the maximum daily cost
+        var maxDailyCost = dailyCosts.GroupBy(a => a.Date)
+            .Max(group =>
+                group.Sum(item => topItems.Contains(item.Name) ? (settings.UseUSD ? item.CostUsd : item.Cost) : 0));
+
+        foreach (var day in dailyCosts.GroupBy(a => a.Date).OrderBy(a => a.Key))
+        {
+            var data = new List<IBreakdownChartItem>();
+            var dailyCost = 0D; // Keep track of the total cost for this day
+            var othersCost = 0D; // Keep track of the total cost for 'Other' items
+
+            foreach (var item in day)
+            {
+                var itemCost = settings.UseUSD ? item.CostUsd : item.Cost;
+
+                if (topItems.Contains(item.Name))
+                {
+                    dailyCost += itemCost;
+
+                    // If we haven't seen this item before, add a new color mapping for it
+                    if (!colorMap.ContainsKey(item.Name))
+                    {
+                        colorMap[item.Name] = Color.FromInt32(colorCounter++);
+                        legendData.Add(new BreakdownChartItem(item.Name, 0,
+                            colorMap[item.Name])); // Add item to legend with initial cost of 0
+                    }
+
+                    // Add this item's cost to the data for this day, using the assigned color
+                    data.Add(new BreakdownChartItem(item.Name, itemCost, colorMap[item.Name]));
+                }
+                else
+                {
+                    othersCost += itemCost;
+                }
+            }
+
+            // Add 'Other' items, if there are any
+            if (othersCost > 0)
+            {
+                dailyCost += othersCost;
+                if (!colorMap.ContainsKey(othersLabel))
+                {
+                    colorMap[othersLabel] = Color.FromInt32(colorCounter++);
+                    legendData.Add(new BreakdownChartItem(othersLabel, 0, colorMap[othersLabel]));
+                }
+
+                data.Add(new BreakdownChartItem(othersLabel, othersCost, colorMap[othersLabel]));
+            }
+
+            var c = new BreakdownBar(data);
+
+            // Calculate width as a proportion of the maximum daily cost
+            // Here we assume a maximum character width of 50, adjust this as per your requirement
+            c.Width = (int)Math.Round((dailyCost / maxDailyCost) * 50);
+
+            t.AddRow(
+                new Markup(day.Key.ToString(CultureInfo.CurrentCulture)),
+                new Money(dailyCost, settings.UseUSD ? "USD" : day.First().Currency, 2, null, Justify.Left),
+                c);
+        }
+
+        t.AddEmptyRow();
+
+        var tags = new BreakdownTags(legendData)
+        {
+            ShowTagValues = false
+        };
+
+        t.AddRow(new Markup("Legend"), new Markup(""), tags);
+
+        AnsiConsole.Write(t);
+
+        var costGroupedByDay = dailyCosts.GroupBy(a => a.Date).OrderBy(a => a.Key);
+        // Calculate trend of the cost, so we can see if we are going up or down
+        var previousCost = 0D;
+        var trend = 0D;
+        foreach (var day in costGroupedByDay)
+        {
+            var currentCost = day.Sum(a => settings.UseUSD ? a.CostUsd : a.Cost);
+            if (previousCost != 0)
+            {
+                trend += currentCost - previousCost;
+            }
+
+            previousCost = currentCost;
+        }
+
+        var trendText = trend > 0 ? "up" : "down";
+        var totalSum = dailyCosts.Sum(a => settings.UseUSD ? a.CostUsd : a.Cost);
+
+        var avgCost = totalSum / costGroupedByDay.Count();
+
+        var figletTotalCost = new FigletText(totalSum.ToString("N2")).Color(trend > 0 ? Color.Red : Color.Green);
+        var textTotalCost =
+            new Markup(
+                $"Total costs in {(settings.UseUSD ? "USD" : dailyCosts.First().Currency)}, going {trendText} {(trend > 0 ? ":chart_increasing:" : ":chart_decreasing:")}");
+
+        var figletAvgCost = new FigletText(avgCost.ToString("N2")).Color(Color.Blue);
+        var textAvgCost = new Markup("Avg daily costs in " + (settings.UseUSD ? "USD" : dailyCosts.First().Currency));
+
+
+        var rule = new Rule();
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(rule);
+
+        AnsiConsole.Write(new Columns(
+            new Rows(figletTotalCost, textTotalCost),
+            new Rows(figletAvgCost, textAvgCost)));
+
+
+        return Task.CompletedTask;
+    }
+
     public override Task WriteAnomalyDetectionResults(DetectAnomalySettings settings,
         List<AnomalyDetectionResult> anomalies)
     {

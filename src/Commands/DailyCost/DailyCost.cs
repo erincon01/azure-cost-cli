@@ -86,6 +86,7 @@ public class DailyCostCommand : AsyncCommand<DailyCostSettings>
         }
 
         IEnumerable<CostDailyItem> dailyCost = new List<CostDailyItem>();
+        IEnumerable<CostDailyItemExpanded> dailyCostExpanded = new List<CostDailyItemExpanded>();
 
         // if output format is not csv, json, or jsonc, then don't include tags
         if (settings.Output.ToString().ToLower() != "json" && settings.Output.ToString().ToLower() != "jsonc" && settings.Output.ToString().ToLower() != "csv")
@@ -98,18 +99,33 @@ public class DailyCostCommand : AsyncCommand<DailyCostSettings>
             {
                 // Fetch the costs from the Azure Cost Management API
 
-                dailyCost = await _costRetriever.RetrieveDailyCost(settings.Debug, settings.GetScope,
+                if (settings.ExpandColumns)
+                    dailyCostExpanded = await _costRetriever.RetrieveDailyCostExpanded(settings.Debug, settings.GetScope,
                     settings.Filter,
                     settings.Metric,
                     settings.Dimension,
                     settings.Timeframe,
                     settings.From, settings.To,
                     settings.IncludeTags);
+                else
+                    dailyCost = await _costRetriever.RetrieveDailyCost(settings.Debug, settings.GetScope,
+                        settings.Filter,
+                        settings.Metric,
+                        settings.Dimension,
+                        settings.Timeframe,
+                        settings.From, settings.To,
+                        settings.IncludeTags);
             });
 
         // Write the output
-        await _outputFormatters[settings.Output]
-        .WriteDailyCost(settings, dailyCost);        
+        if (settings.ExpandColumns)
+                await _outputFormatters[settings.Output]
+                .WriteDailyCostExpanded(settings, dailyCostExpanded);
+        else
+        {
+                await _outputFormatters[settings.Output]
+                .WriteDailyCost(settings, dailyCost);
+        }
 
         return 0; // Omitted
     }

@@ -607,6 +607,117 @@ public class AzureCostApiRetriever : ICostRetriever
         return items;
     }
 
+    public async Task<IEnumerable<CostDailyItemExpanded>> RetrieveDailyCostExpanded(bool includeDebugOutput,
+        Scope scope, string[] filter, MetricType metric, string dimension,
+        TimeframeType timeFrame, DateOnly from, DateOnly to, bool includeTags)
+    {
+        var uri = DeterminePath(scope, "/providers/Microsoft.CostManagement/query?api-version=2023-03-01&$top=5000");
+
+        var payload = new
+        {
+            type = metric.ToString(),
+            timeframe = timeFrame.ToString(),
+            timePeriod = timeFrame == TimeframeType.Custom
+                ? new
+                {
+                    from = from.ToString("yyyy-MM-dd"),
+                    to = to.ToString("yyyy-MM-dd")
+                }
+                : null,
+            dataSet = new
+            {
+                granularity = "Daily",
+                include = includeTags ? new[] { "Tags" } : null,
+                aggregation = new
+                {
+                    totalCost = new
+                    {
+                        name = "Cost",
+                        function = "Sum"
+                    },
+                    totalCostUSD = new
+                    {
+                        name = "CostUSD",
+                        function = "Sum"
+                    }
+                },
+                sorting = new[]
+                {
+                    new
+                    {
+                        direction = "Ascending",
+                        name = "UsageDate"
+                    }
+                },
+                grouping = new[]
+                {
+                    new {
+                         type = "Dimension",
+                         name = "SubscriptionID"
+                    },
+                    new {
+                         type = "Dimension",
+                         name = "SubscriptionName"
+                    },
+                    new {
+                         type = "Dimension",
+                         name = "ResourceGroupName"
+                    },
+                    new {
+                         type = "Dimension",
+                         name = "ResourceType"
+                    },
+                    new {
+                        type = "Dimension",
+                        name = dimension
+                    },
+                    new {
+                        type = "Dimension",
+                        name = "ChargeType"
+                    }
+                },
+                filter = GenerateFilters(filter)
+            }
+        };
+        var response = await ExecuteCallToCostApi(includeDebugOutput, payload, uri);
+
+        CostQueryResponse? content = await response.Content.ReadFromJsonAsync<CostQueryResponse>();
+
+        var items = new List<CostDailyItemExpanded>();
+        foreach (var row in content.properties.rows)
+        {
+            var subscriptionID = row[3].ToString();
+            var subscriptionName = row[4].ToString();
+            var resourceGroupName = row[5].ToString();
+            var resourceType = row[6].ToString();
+
+            var dimensionName = row[7].ToString();
+            var date = DateOnly.ParseExact(row[2].ToString(), "yyyyMMdd", CultureInfo.InvariantCulture);
+
+            var value = double.Parse(row[0].ToString(), CultureInfo.InvariantCulture);
+            var valueUsd = double.Parse(row[1].ToString(), CultureInfo.InvariantCulture);
+
+            // if includeTags is true, row[9] is the tag, and row[10] is the currency, otherwise row[9] is the currency
+            var currency = row[9].ToString();
+            var tags = "";
+
+            // if includeTags is true, switch the value between currency and tags
+            // that's the order how the API REST exposes the resultset
+            if (includeTags)
+            {
+                System.Text.Json.JsonElement element = row[9];
+                tags = element.GetRawText();
+                currency = row[10].ToString();
+            }
+
+            var costItemExpanded = new CostDailyItemExpanded(subscriptionID, subscriptionName, resourceGroupName, resourceType, date, dimensionName, value, valueUsd, currency, tags);
+            items.Add(costItemExpanded);
+        }
+
+        return items;
+    }
+
+
     public async Task<Subscription> RetrieveSubscription(bool includeDebugOutput, Guid subscriptionId)
     {
         var uri = new Uri(

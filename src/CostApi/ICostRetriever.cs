@@ -35,7 +35,12 @@ public interface ICostRetriever
     Task<IEnumerable<UsageDetails>> RetrieveUsageDetails(bool includeDebugOutput,
         Scope scope, string filter, DateOnly from,        DateOnly to);
     
-    Task<IEnumerable<CostDailyItem>> RetrieveDailyCost(bool settingsDebug, Scope scope, string[] filter,MetricType metric, string dimension, TimeframeType settingsTimeframe, DateOnly settingsFrom, DateOnly settingsTo, bool includeTags);
+    Task<IEnumerable<CostDailyItem>> RetrieveDailyCost(bool settingsDebug, Scope scope, string[] filter,MetricType metric, 
+        string dimension, TimeframeType settingsTimeframe, DateOnly settingsFrom, DateOnly settingsTo, bool includeTags);
+
+    Task<IEnumerable<CostDailyItemExpanded>> RetrieveDailyCostExpanded(bool settingsDebug, Scope scope, string[] filter, MetricType metric,
+        string dimension, TimeframeType settingsTimeframe, DateOnly settingsFrom, DateOnly settingsTo, bool includeTags);
+
 }
 
 

@@ -77,6 +77,10 @@ public class CostSettings : LogCommandSettings, ICostSettings
     [DefaultValue(false)]
     public bool IncludeTags { get; set; }
 
+    [CommandOption("--expandColumns")]
+    [Description("Expand columns: subscription id, subscription name, resource group name, and resource type. The option is used for DailyCost report and output to Json, JsonC or Csv. Ignored in other reports and output formats.")]
+    [DefaultValue(false)]
+    public bool ExpandColumns { get; set; }
 
     public Scope GetScope
     {

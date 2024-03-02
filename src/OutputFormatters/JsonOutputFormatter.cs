@@ -91,6 +91,35 @@ public class JsonOutputFormatter : BaseOutputFormatter
         return Task.CompletedTask;
     }
 
+    public override Task WriteDailyCostExpanded(DailyCostSettings settings, IEnumerable<CostDailyItemExpanded> dailyCosts)
+    {
+        // Create a new variable to hold the dailyCost items per day
+        // Code to avoid creating the column Tags when is not needed
+        if (settings.IncludeTags == false)
+        {
+            var output = dailyCosts
+                        .GroupBy(a => a.Date)
+                        .Select(a => new
+                        {
+                            Date = a.Key,
+                            Items = a.Select(b => new {b.SubscriptionId, b.SubscriptionName, b.ResourceGroupName, b.ResourceType, b.Name, b.Cost, b.Currency, b.CostUsd })
+                        });
+            WriteJson(settings, output);
+        }
+        else
+        {
+            var output = dailyCosts
+            .GroupBy(a => a.Date)
+            .Select(a => new
+            {
+                Date = a.Key,
+                Items = a.Select(b => new {b.SubscriptionId, b.SubscriptionName, b.ResourceGroupName, b.ResourceType, b.Name, b.Cost, b.Currency, b.CostUsd, b.Tags })
+            });
+            WriteJson(settings, output);
+        }
+        return Task.CompletedTask;
+    }
+
     public override Task WriteAnomalyDetectionResults(DetectAnomalySettings settings, List<AnomalyDetectionResult> anomalies)
     {
         WriteJson(settings, anomalies);

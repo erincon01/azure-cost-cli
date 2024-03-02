@@ -77,7 +77,10 @@ OPTIONS:
         --useUSD          Force the use of USD for the currency. Defaults to false to use the currency returned by the API        
         --skipHeader      Skip header creation for specific output formats. Useful when appending the output from multiple runs into one file. Defaults to false 
         --filter          Filter the output by the specified properties. Defaults to no filtering and can be multiple values.
-        --includeTags     Include Tags from the selected dimension. Valid only for DailyCost report and output to Json, JsonC or Csv. Ignored in the rest of reports and output formats.
+        --includeTags     Include Tags from the selected dimension. Valid only for DailyCost report and output to Json, JsonC or Csv. 
+        --expandColumns   Expand columns: subscription id, subscription name, resource group name, and resource type. The option is used for DailyCost report and output to Json, JsonC or Csv. Ignored in other reports and output formats.
+                                              
+                                              Ignored in the rest of reports and output formats.
     -m, --metric           ActualCost    The metric to use for the costs. Defaults to ActualCost. (ActualCost, AmortizedCost)    
 
 COMMANDS:
@@ -223,6 +226,25 @@ That would extend into a column called Tags the resource group tags in Json form
 ```
 Note that the Json column should be parsed in the analytical tool.
 
+
+### Expand Columns
+This option allows to include the subscription id, subscription name, resource group name, and resource type to the daily cost results. By doing so, you will not need to extract these properties from the resource name value.
+
+The following query shows the daily costs for subscription x group by resource group name including the tags for the resource group ready to export to Csv:
+
+```bash 
+azure-cost dailyCosts -s XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX --dimension ResourceGroupName --includeTags --expandColumns -o Csv
+```
+
+Note: There are the columns elegible to add into the API REST call (not implemented in this code, but good to inform in case you need to add new columns to this project):
+
+```bash 
+	'ResourceGroup','ResourceGroupName','ResourceLocation','ConsumedService','ResourceType','ResourceId','MeterId',
+	'BillingMonth','MeterCategory','MeterSubcategory','Meter','AccountName','DepartmentName',
+  'SubscriptionId','SubscriptionName','ServiceName','ServiceTier','EnrollmentAccountName','BillingAccountId',
+  'ResourceGuid','BillingPeriod','InvoiceNumber','ChargeType','PublisherType','ReservationId','ReservationName',
+  'Frequency','PartNumber','CostAllocationRuleName','MarkupRuleName','PricingModel','BenefitId','BenefitName'
+```
 
 ### Detect Anomalies
 
