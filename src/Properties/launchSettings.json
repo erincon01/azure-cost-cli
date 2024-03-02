@@ -1,8 +1,7 @@
 {
   "profiles": {
     "azure-cost-cli": {
-      "commandName": "Project",
-      "commandLineArgs": "dailyCosts -s c0528b27-6a90-4a3d-8a22-8497e50b7d0b --dimension ResourceId --includeTags --expandColumns -t custom --from \"2024-01-01\" --to \"2024-01-02\" -o Csv"
+      "commandName": "Project"
     }
   }
 }
